@@ -13,7 +13,7 @@ class DailySummaryTests(unittest.TestCase):
         repo.save_message("1", "user", "Здравствуйте")
         sent = []
         service = DailySummaryService(repo, "42", "Asia/Yekaterinburg")
-        now = datetime(2026, 8, 23, 20, 5, tzinfo=ZoneInfo("Asia/Yekaterinburg"))
+        now = datetime.now(ZoneInfo("Asia/Yekaterinburg")).replace(hour=20, minute=5, second=0, microsecond=0)
         self.assertTrue(service.run_if_due(lambda user, text: sent.append((user, text)), now))
         self.assertIn("Новых сообщений: 1", sent[0][1])
         self.assertFalse(service.run_if_due(lambda user, text: sent.append((user, text)), now))
