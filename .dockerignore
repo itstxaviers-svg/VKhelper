@@ -1,8 +1,8 @@
+.git
 .env
 bothost.env
-*.db
+__pycache__/
+.pytest_cache/
+*.py[cod]
 *.sqlite
 *.sqlite3
-__pycache__/
-*.py[cod]
-.pytest_cache/
