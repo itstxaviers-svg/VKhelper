@@ -56,6 +56,13 @@ class ConversationTests(unittest.TestCase):
         self.assertIn("группа работает", reply)
         self.assertEqual(fake.calls, [])
 
+    def test_activity_status_tolerates_a_common_typo(self):
+        fake = FakeAI()
+        bot = ConversationService(self.repo, fake, self.business, "# О нас", "42", "https://vk.com/id42")
+        reply = bot.handle("1", "Ребёнку ищу учителя английского. Вы паботаете?").text
+        self.assertIn("группа работает", reply)
+        self.assertEqual(fake.calls, [])
+
     def test_how_they_work_is_sent_to_ai(self):
         fake = FakeAI([AIResult(intent="ABOUT", reply="Занятия проходят в небольших группах.")])
         bot = ConversationService(self.repo, fake, self.business, "# О нас", "42", "https://vk.com/id42")

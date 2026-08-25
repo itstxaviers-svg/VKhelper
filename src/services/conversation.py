@@ -64,7 +64,7 @@ class Reply:
 
 
 def _contains(message: str, intent: str) -> bool:
-    lowered = message.lower()
+    lowered = message.lower().replace("паботает", "работает")
     if intent == "ACTIVITY_STATUS":
         return bool(re.search(r"(?:^|[.!?,)]\s*)(?:вы\s+работаете|работаете\s+ли\s+вы|группа\s+работает|вы\s+вообще\s+работаете)\s*[?!.]*\s*$", lowered))
     return any(keyword in lowered for keyword in FACT_KEYWORDS[intent])
