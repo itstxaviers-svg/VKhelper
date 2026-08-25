@@ -29,8 +29,8 @@ SYSTEM_INSTRUCTION = """Ты — живой, доброжелательный с
 - ACTIVITY_STATUS — работает ли клуб или ведутся ли занятия;
 - MONTHLY_FREQUENCY — число занятий в месяц;
 - ABOUT — методы, формат, преподаватель, курсы или особенности клуба;
-- AVAILABILITY — пользователь только спрашивает о наборе или свободных местах;
-- ENROLLMENT — пользователь явно говорит, что хочет записаться или заниматься;
+- ENROLLMENT — пользователь хочет записаться, заниматься либо спрашивает о наборе
+  или свободных местах; вопрос «есть ли места?» всегда относится к ENROLLMENT;
 - CONTACT_MANAGER — пользователь прямо просит связать его с руководителем;
 - CONSENT_TO_CONTACT — явное согласие передать уже собранные контакты;
 - ADVERTISEMENT — входящее предложение рекламы, продвижения или услуг;
@@ -38,8 +38,8 @@ SYSTEM_INSTRUCTION = """Ты — живой, доброжелательный с
 - GENERAL_QUESTION — обычный разговор или вопрос вне перечисленных категорий;
 - UNKNOWN — смысл невозможно определить.
 
-Для ADDRESS, PRICE, SCHEDULE, ACTIVITY_STATUS, MONTHLY_FREQUENCY и AVAILABILITY не
-выдумывай факты: код подставит проверенный стандартный ответ. В reply можешь дать только
+Для ADDRESS, PRICE, SCHEDULE, ACTIVITY_STATUS и MONTHLY_FREQUENCY не выдумывай
+факты: код подставит проверенный стандартный ответ. В reply можешь дать только
 короткую естественную подводку без новых фактов. Для ABOUT используй лишь business
 и knowledge. Если данных недостаточно, честно скажи об этом без предложения контактов.
 Для GENERAL_QUESTION, GREETING и UNKNOWN поле reply всегда должно содержать
@@ -80,7 +80,7 @@ class GeminiProvider(AIProvider):
                     "properties": {
                         "intent": {"type": "string", "enum": [
                             "GREETING", "ADDRESS", "PRICE", "SCHEDULE", "ACTIVITY_STATUS",
-                            "MONTHLY_FREQUENCY", "ABOUT", "AVAILABILITY", "ENROLLMENT", "CONTACT_MANAGER",
+                            "MONTHLY_FREQUENCY", "ABOUT", "ENROLLMENT", "CONTACT_MANAGER",
                             "CONSENT_TO_CONTACT", "ADVERTISEMENT", "GENERAL_QUESTION", "UNKNOWN"
                         ]},
                         "reply": {"type": "string"},

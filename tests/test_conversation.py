@@ -139,13 +139,14 @@ class ConversationTests(unittest.TestCase):
         self.assertEqual(lead["child_grade"], "5")
         self.assertEqual(lead["contact_consent"], 1)
 
-    def test_availability_question_does_not_start_contact_collection(self):
-        fake = FakeAI([AIResult(intent="AVAILABILITY", reply="Оставьте телефон")])
+    def test_availability_question_starts_enrollment_flow(self):
+        fake = FakeAI([AIResult(intent="GENERAL_QUESTION", reply="Обычный ответ")])
         bot = ConversationService(self.repo, fake, self.business, "# О нас", "42", "https://vk.com/id42")
         reply = bot.handle("1", "Есть ли места в группе?").text
-        self.assertIn("информация о свободных местах пока не указана", reply)
-        self.assertNotIn("телефон", reply)
-        self.assertIsNone(self.repo.get_lead("1"))
+        self.assertIn("уточним возможность записи", reply)
+        self.assertIn("как зовут ребёнка", reply.lower())
+        self.assertNotIn("номер телефона", reply)
+        self.assertEqual(self.repo.get_lead("1")["status"], "COLLECTING_CONTACTS")
 
     def test_lead_name_and_grade_are_saved_when_ai_is_down(self):
         bot = self.service([AIResult(intent="ENROLLMENT", lead_detected=True, extracted_data={})], broken=False)

@@ -17,12 +17,15 @@ FACT_KEYWORDS = {
     "SCHEDULE": ("расписан", "график", "когда проходят", "вечером", "когда можно"),
     "ACTIVITY_STATUS": ("вы работаете", "работаете ли", "группа работает", "вы вообще работаете"),
     "ABOUT": ("о вашем клубе", "о клубе", "про клуб", "о педагоге", "о преподавателе", "о методике", "ваш подход"),
-    "AVAILABILITY": ("есть места", "есть ли места", "идёт набор", "идет набор", "набор открыт", "принимаете новых"),
     "ADVERTISEMENT": ("реклам", "продвижен", "таргет", "smm", "смм", "лиды для", "увеличим продажи"),
-    "ENROLLMENT": ("хочу запис", "хотим запис", "запишите", "хотим заниматься", "хочу заниматься", "как к вам попасть"),
+    "ENROLLMENT": (
+        "хочу запис", "хотим запис", "запишите", "хотим заниматься", "хочу заниматься",
+        "как к вам попасть", "есть места", "есть ли места", "идёт набор", "идет набор",
+        "набор открыт", "принимаете новых",
+    ),
 }
 
-STANDARD_FACT_INTENTS = ("ADDRESS", "PRICE", "SCHEDULE", "ACTIVITY_STATUS", "MONTHLY_FREQUENCY", "ABOUT", "AVAILABILITY")
+STANDARD_FACT_INTENTS = ("ADDRESS", "PRICE", "SCHEDULE", "ACTIVITY_STATUS", "MONTHLY_FREQUENCY", "ABOUT")
 
 OPENING_PHRASES = (
     "Пусть сегодня найдётся хотя бы один маленький повод улыбнуться.",
@@ -146,7 +149,7 @@ class ConversationService:
 
     def _fact_intents(self, message: str, history: list[dict], ai_intent: str) -> list[str]:
         intents: list[str] = []
-        for intent in ("ADDRESS", "PRICE", "SCHEDULE", "ACTIVITY_STATUS", "ABOUT", "AVAILABILITY"):
+        for intent in ("ADDRESS", "PRICE", "SCHEDULE", "ACTIVITY_STATUS", "ABOUT"):
             if _contains(message, intent):
                 intents.append(intent)
         lowered = message.lower()
@@ -201,9 +204,6 @@ class ConversationService:
                     schedule = str(self.business.get("working_hours", "")).strip()
                     if schedule:
                         parts.append(f"Занятия проходят в таком режиме: {schedule}.")
-            elif intent == "AVAILABILITY":
-                availability = str(self.business.get("enrollment_status", "")).strip()
-                parts.append(availability or "Актуальная информация о свободных местах пока не указана.")
 
         return Reply(" ".join(parts) or "Проверенной информации по этому вопросу пока нет.")
 
@@ -347,6 +347,8 @@ class ConversationService:
         labels = {"child_name": "как зовут ребёнка", "child_grade": "в каком он классе", "parent_name": "как я могу обращаться к вам", "parent_phone": "номер телефона для связи"}
         if intent == "CONTACT_MANAGER" and missing == ["parent_phone"]:
             return "Конечно. Если хотите оставить ещё и номер телефона для связи, отправьте его сюда."
+        if intent == "ENROLLMENT" and "child_name" in missing and "child_grade" in missing:
+            return "Конечно, давайте уточним возможность записи. Как зовут ребёнка и в каком он классе?"
         if len(missing) == 1:
             return f"Подскажите, пожалуйста, {labels[missing[0]]}?"
         if missing == ["child_name", "child_grade"]:

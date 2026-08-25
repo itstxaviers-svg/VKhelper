@@ -57,7 +57,7 @@ class GeminiProviderTests(unittest.TestCase):
         self.assertEqual(config["thinkingConfig"], {"thinkingLevel": "minimal"})
         self.assertEqual(config["maxOutputTokens"], 4096)
         self.assertNotIn("temperature", config)
-        self.assertIn("AVAILABILITY", config["responseJsonSchema"]["properties"]["intent"]["enum"])
+        self.assertIn("ENROLLMENT", config["responseJsonSchema"]["properties"]["intent"]["enum"])
 
     @patch("src.ai.gemini.tls_context", return_value=None)
     @patch("src.ai.gemini.urllib.request.urlopen")
