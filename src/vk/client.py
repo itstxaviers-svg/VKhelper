@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import random
 import time
 import urllib.parse
@@ -58,5 +59,6 @@ class VKClient:
                     if update.get("type") == "message_new":
                         on_message(update["object"]["message"])
             except Exception:
+                logging.exception("vk_long_poll_error")
                 time.sleep(2)
                 server = None
