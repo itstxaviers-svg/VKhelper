@@ -36,7 +36,13 @@ class Settings:
     @classmethod
     def from_project_root(cls, root: Path) -> "Settings":
         load_dotenv(root / ".env")
-        business = json.loads((root / "data" / "business.json").read_text(encoding="utf-8"))
+        # BotHost mounts its writable database volume at /app/data.  Keep the
+        # bundled community facts beside the application code so the mount
+        # cannot hide them at runtime.
+        configured_data = root / "data"
+        bundled_data = Path(__file__).resolve().parent
+        data_source = configured_data if (configured_data / "business.json").exists() else bundled_data
+        business = json.loads((data_source / "business.json").read_text(encoding="utf-8"))
         return cls(
             ai_provider=os.getenv("AI_PROVIDER", "gemini").lower(),
             gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
@@ -49,5 +55,5 @@ class Settings:
             timezone=os.getenv("TIMEZONE", "Asia/Yekaterinburg"),
             daily_summary_hour=int(os.getenv("DAILY_SUMMARY_HOUR", "20")),
             business=business,
-            knowledge=(root / "data" / "knowledge.md").read_text(encoding="utf-8"),
+            knowledge=(data_source / "knowledge.md").read_text(encoding="utf-8"),
         )
