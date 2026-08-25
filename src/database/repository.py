@@ -65,6 +65,11 @@ class Repository:
         rows = self.connection.execute("SELECT role, content FROM messages WHERE vk_user_id = ? ORDER BY id DESC LIMIT ?", (user_id, limit)).fetchall()
         return [dict(row) for row in reversed(rows)]
 
+    def recent_message_contents(self, limit: int = 30) -> list[str]:
+        """Recent bot-wide messages, used to rotate opening phrases."""
+        rows = self.connection.execute("SELECT content FROM messages ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [str(row["content"]) for row in rows]
+
     def get_lead(self, user_id: str) -> dict | None:
         row = self.connection.execute("SELECT * FROM leads WHERE vk_user_id = ?", (user_id,)).fetchone()
         return dict(row) if row else None

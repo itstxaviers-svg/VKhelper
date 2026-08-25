@@ -66,7 +66,9 @@ class ConversationTests(unittest.TestCase):
     def test_greeting_uses_ai_reply(self):
         fake = FakeAI([AIResult(intent="GREETING", reply="Здравствуйте! Пусть знакомство с новым всегда начинается легко. Чем могу помочь?")])
         bot = ConversationService(self.repo, fake, self.business, "# О нас", "42", "https://vk.com/id42")
-        self.assertEqual(bot.handle("1", "Здравствуйте").text, "Здравствуйте! Пусть знакомство с новым всегда начинается легко. Чем могу помочь?")
+        reply = bot.handle("1", "Здравствуйте").text
+        self.assertTrue(reply.startswith("Здравствуйте!"))
+        self.assertIn("Чем могу помочь?", reply)
         self.assertEqual(len(fake.calls), 1)
 
     def test_lead_collection_consent_and_handoff(self):
@@ -101,7 +103,7 @@ class ConversationTests(unittest.TestCase):
         self.repo.update_lead("1", {"parent_name": "Елена", "child_name": "Аня", "child_grade": "5", "parent_phone": "+7 999 123-45-67"}, status="HANDED_TO_MANAGER", consent=True)
         bot = self.service([AIResult(intent="GREETING", reply="Здравствуйте! Чем могу помочь?")])
         reply = bot.handle("1", "Привет! Как дела?").text
-        self.assertEqual(reply, "Здравствуйте! Чем могу помочь?")
+        self.assertIn("Чем могу помочь?", reply)
         self.assertNotIn("Передать", reply)
         self.assertEqual(self.repo.get_lead("1")["status"], "HANDED_TO_MANAGER")
 
@@ -132,8 +134,22 @@ class ConversationTests(unittest.TestCase):
     def test_general_question_has_friendly_fallback(self):
         bot = self.service(broken=True)
         reply = bot.handle("1", "Какие условия оплаты?").text
-        self.assertIn("руководителя", reply)
-        self.assertIn("https://vk.com/id42", reply)
+        self.assertNotIn("руководител", reply)
+        self.assertNotIn("контакт", reply)
+
+    def test_emotional_message_has_supportive_fallback(self):
+        bot = self.service(broken=True)
+        reply = bot.handle("1", "Я очень устала сегодня").text
+        self.assertIn("Понимаю", reply)
+        self.assertNotIn("руководител", reply)
+
+    def test_opening_phrase_does_not_repeat_within_thirty_messages(self):
+        bot = self.service()
+        first = bot._opening_greeting("1", "")
+        self.repo.save_message("1", "assistant", first)
+        for index in range(29):
+            self.repo.save_message(str(index + 10), "assistant", f"служебное сообщение {index}")
+        self.assertNotEqual(first, bot._opening_greeting("1", ""))
 
     def test_weather_never_redirects_to_manager(self):
         bot = self.service(broken=True)

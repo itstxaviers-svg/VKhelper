@@ -21,6 +21,40 @@ FACT_KEYWORDS = {
     "CONTACT_MANAGER": ("педагог", "руководител", "преподавател", "связаться", "позвонит"),
 }
 
+OPENING_PHRASES = (
+    "Пусть сегодня найдётся хотя бы один маленький повод улыбнуться.",
+    "Даже небольшой шаг вперёд — это уже движение.",
+    "Пусть всё важное сегодня получится чуть легче, чем ожидалось.",
+    "Новые разговоры часто начинаются с простого «привет» — и это здорово.",
+    "Пусть любопытство сегодня приведёт к чему-то хорошему.",
+    "Необязательно знать всё сразу — достаточно начать с вопроса.",
+    "Пусть день оставит место для тёплых слов и хороших идей.",
+    "Маленькие открытия тоже умеют делать день ярче.",
+    "Пусть в делах будет больше ясности, а в мыслях — спокойствия.",
+    "Иногда лучший старт — просто дать себе время разобраться.",
+    "Пусть сегодня получится заметить то, чем можно гордиться.",
+    "Хорошее настроение иногда начинается с одного доброго диалога.",
+    "Пусть у вас хватит сил и на важное, и на приятное.",
+    "Любой большой путь складывается из понятных маленьких шагов.",
+    "Пусть день будет бережным к вам.",
+    "Вопросы — это не помеха, а способ найти свой путь.",
+    "Пусть рядом будут люди и мысли, которые поддерживают.",
+    "Даже в насыщенный день можно найти минутку для себя.",
+    "Пусть сегодняшнее общение принесёт что-то полезное.",
+    "Не торопитесь: хорошие решения любят спокойный темп.",
+    "Пусть уверенность растёт из маленьких удачных попыток.",
+    "Сегодня можно начать с самого простого — и этого достаточно.",
+    "Пусть в вашем дне будет место для интереса и вдохновения.",
+    "Иногда достаточно одного доброго слова, чтобы стало легче.",
+    "Пусть всё сложное постепенно станет понятнее.",
+    "Каждый день даёт шанс узнать или попробовать что-то новое.",
+    "Пусть у вас получится сохранить внимание к тому, что действительно важно.",
+    "Спокойный шаг тоже ведёт вперёд.",
+    "Пусть сегодня будет больше поводов сказать себе «у меня получается».",
+    "Небольшая пауза иногда помогает увидеть решение.",
+    "Пусть этот разговор станет хорошим началом.",
+)
+
 
 @dataclass
 class Reply:
@@ -109,8 +143,8 @@ class ConversationService:
         else:
             reply = self._lead_or_general(user_id, cleaned, result, lead, first_message, intent)
 
-        if first_message and intent != "GREETING":
-            reply.text = "Здравствуйте! " + reply.text
+        if first_message:
+            reply.text = self._opening_greeting(user_id, reply.text)
         self._save(user_id, cleaned, reply.text)
         return reply
 
@@ -168,7 +202,7 @@ class ConversationService:
             return Reply("Спасибо за предложение! Сейчас рекламные услуги нам не интересны. Желаем вам успехов!")
         completed_lead = bool(lead) and bool(lead.get("contact_consent"))
         active_lead = bool(lead) and not completed_lead and lead.get("status") in {"NEW", "COLLECTING_CONTACTS", "READY_FOR_CONTACT"}
-        is_lead = active_lead or (not completed_lead and (result.lead_detected or intent in ("ENROLLMENT", "CONTACT_MANAGER")))
+        is_lead = active_lead or (not completed_lead and (intent == "ENROLLMENT" or self._explicit_contact_request(message)))
         if is_lead:
             current = self.repository.ensure_lead(user_id)
             fields = self._validated_fields(result.extracted_data or {})
@@ -198,10 +232,29 @@ class ConversationService:
             return "Я не вижу, какая сейчас погода за окном, поэтому не буду угадывать 🙂 Пусть день будет хорошим!"
         if any(phrase in lowered for phrase in ("как дела", "как ты", "как ваши дела")):
             return "Спасибо, всё хорошо! Я на связи и готова помочь с вопросами о занятиях."
-        manager = self.manager_vk_url
-        if manager:
-            return f"По этому вопросу лучше уточнить у руководителя: {manager}. Если вам удобнее, оставьте контакты — я передам их с вашего согласия."
-        return "По этому вопросу лучше уточнить у руководителя. Если вам удобнее, оставьте контакты — я передам их с вашего согласия."
+        if any(word in lowered for word in ("устал", "устала", "тяжело", "грустно", "плохо", "тревожно")):
+            return "Понимаю. Иногда правда нужно немного выдохнуть и не требовать от себя слишком многого. Если хотите, расскажите, что особенно вымотало — я побуду рядом в разговоре."
+        return "Я на связи и могу спокойно поговорить с вами. Расскажите чуть подробнее, что сейчас занимает мысли?"
+
+    def _opening_greeting(self, user_id: str, text: str) -> str:
+        recent = self.repository.recent_message_contents(limit=30)
+        start = sum(ord(char) for char in user_id) % len(OPENING_PHRASES)
+        phrase = next(
+            (OPENING_PHRASES[(start + offset) % len(OPENING_PHRASES)] for offset in range(len(OPENING_PHRASES))
+             if all(OPENING_PHRASES[(start + offset) % len(OPENING_PHRASES)] not in content for content in recent)),
+            OPENING_PHRASES[start],
+        )
+        remainder = re.sub(r"^\s*здравствуйте[!,.\s]*", "", text, flags=re.IGNORECASE).strip()
+        return f"Здравствуйте! {phrase}" + (f" {remainder}" if remainder else "")
+
+    @staticmethod
+    def _explicit_contact_request(message: str) -> bool:
+        lowered = message.lower()
+        return any(phrase in lowered for phrase in (
+            "связаться с руководителем", "связаться с педагогом", "позвоните мне",
+            "пусть позвонит", "передайте руководителю", "передайте педагогу",
+            "хочу оставить контакты", "оставлю номер", "оставить номер",
+        ))
 
     @staticmethod
     def _validated_fields(fields: dict[str, str | None]) -> dict[str, str]:
