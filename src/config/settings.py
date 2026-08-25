@@ -41,8 +41,17 @@ class Settings:
         # cannot hide them at runtime.
         configured_data = root / "data"
         bundled_data = Path(__file__).resolve().parent
-        data_source = configured_data if (configured_data / "business.json").exists() else bundled_data
-        business = json.loads((data_source / "business.json").read_text(encoding="utf-8"))
+        data_source = bundled_data
+        business: dict | None = None
+        for candidate in (configured_data, bundled_data):
+            try:
+                business = json.loads((candidate / "business.json").read_text(encoding="utf-8"))
+                data_source = candidate
+                break
+            except (FileNotFoundError, json.JSONDecodeError):
+                continue
+        if business is None:
+            raise RuntimeError("business.json is unavailable")
         return cls(
             ai_provider=os.getenv("AI_PROVIDER", "gemini").lower(),
             gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
