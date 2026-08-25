@@ -16,10 +16,13 @@ FACT_KEYWORDS = {
     "PRICE": ("стоим", "цен", "сколько стоит", "сколько у вас стоит"),
     "SCHEDULE": ("расписан", "график", "когда проходят", "вечером", "когда можно"),
     "ACTIVITY_STATUS": ("вы работаете", "работаете ли", "группа работает", "вы вообще работаете"),
+    "ABOUT": ("о вашем клубе", "о клубе", "про клуб", "о педагоге", "о преподавателе", "о методике", "ваш подход"),
+    "AVAILABILITY": ("есть места", "есть ли места", "идёт набор", "идет набор", "набор открыт", "принимаете новых"),
     "ADVERTISEMENT": ("реклам", "продвижен", "таргет", "smm", "смм", "лиды для", "увеличим продажи"),
-    "ENROLLMENT": ("набор", "запис", "места", "новых ученик", "хотим заниматься", "как к вам попасть"),
-    "CONTACT_MANAGER": ("педагог", "руководител", "преподавател", "связаться", "позвонит"),
+    "ENROLLMENT": ("хочу запис", "хотим запис", "запишите", "хотим заниматься", "хочу заниматься", "как к вам попасть"),
 }
+
+STANDARD_FACT_INTENTS = ("ADDRESS", "PRICE", "SCHEDULE", "ACTIVITY_STATUS", "MONTHLY_FREQUENCY", "ABOUT", "AVAILABILITY")
 
 OPENING_PHRASES = (
     "Пусть сегодня найдётся хотя бы один маленький повод улыбнуться.",
@@ -99,46 +102,34 @@ class ConversationService:
         if not cleaned:
             return Reply("Напишите, пожалуйста, ваш вопрос текстом.")
         if any(marker in cleaned.lower() for marker in INJECTION_MARKERS):
-            reply = "Я могу помочь с вопросами о занятиях или передать запрос руководителю."
+            reply = "Не могу выполнить такой запрос, но с удовольствием продолжу обычный разговор или отвечу на вопрос о клубе."
             self._save(user_id, cleaned, reply)
             return Reply(reply)
 
         lead = self.repository.get_lead(user_id)
         history = self.repository.history(user_id)
-        local_intent = self._local_fact_intent(cleaned, history)
-        if local_intent:
-            result = AIResult(intent=local_intent)
-        else:
-            try:
-                result = self.ai.analyze(cleaned, history, self.business, self.knowledge, lead)
-                logger.info("ai_request_success", extra={"vk_user_id": user_id})
-            except Exception as exc:
-                logger.warning("ai_request_failed: %s", exc, extra={"vk_user_id": user_id})
-                result = _fallback(cleaned)
+        try:
+            result = self.ai.analyze(cleaned, history, self.business, self.knowledge, lead)
+            logger.info("ai_request_success", extra={"vk_user_id": user_id})
+        except Exception as exc:
+            logger.warning("ai_request_failed: %s", exc, extra={"vk_user_id": user_id})
+            result = _fallback(cleaned)
 
         extracted = dict(result.extracted_data or {})
-        for field, value in self._extract_lead_data(cleaned, lead).items():
+        local_extracted = self._extract_lead_data(cleaned, lead)
+        for field, value in local_extracted.items():
             if not extracted.get(field):
                 extracted[field] = value
         result.extracted_data = extracted
 
-        # Known fact categories are decided by code, never by free-form AI text.
+        # Gemini leads the conversation and helps classify intent. Verified business
+        # facts are still rendered by code so the model cannot invent them.
         intent = self._safe_intent(cleaned, result.intent, history)
-        if intent == "ADDRESS":
-            reply = self._address_reply()
-        elif intent == "PRICE":
-            reply = self._price_reply(cleaned)
-        elif intent == "SCHEDULE":
-            reply = self._schedule_reply()
-        elif intent == "ACTIVITY_STATUS":
-            reply = self._activity_reply()
-            if _without_salutation(cleaned) != cleaned:
-                reply.text = "Здравствуйте! " + reply.text
-        elif intent == "MONTHLY_FREQUENCY":
-            lessons = str(self.business.get("lessons_per_month", "")).strip()
-            reply = Reply(f"Обычно проводится примерно {lessons} занятий в месяц." if lessons else "У меня пока нет точной информации о количестве занятий в месяц.")
+        fact_intents = self._fact_intents(cleaned, history, intent)
+        if fact_intents:
+            reply = self._standard_fact_reply(fact_intents, cleaned)
         else:
-            reply = self._lead_or_general(user_id, cleaned, result, lead, first_message, intent)
+            reply = self._lead_or_general(user_id, cleaned, result, lead, intent, bool(local_extracted))
 
         if first_message:
             reply.text = self._opening_greeting(user_id, reply.text)
@@ -146,67 +137,120 @@ class ConversationService:
         return reply
 
     def _safe_intent(self, message: str, ai_intent: str, history: list[dict]) -> str:
-        for intent in ("ADDRESS", "PRICE", "SCHEDULE", "ACTIVITY_STATUS", "ADVERTISEMENT", "ENROLLMENT", "CONTACT_MANAGER"):
+        for intent in ("ADVERTISEMENT", "ENROLLMENT"):
             if _contains(message, intent):
                 return intent
-        lowered = message.lower()
-        if "занят" in lowered and any(word in lowered for word in ("месяц", "месяц")):
-            return "MONTHLY_FREQUENCY"
-        if "месяц" in lowered and any("Стоимость одного занятия" in item["content"] for item in history if item["role"] == "assistant"):
-            return "PRICE"
+        if self._explicit_contact_request(message):
+            return "CONTACT_MANAGER"
         return ai_intent
 
-    def _local_fact_intent(self, message: str, history: list[dict]) -> str | None:
-        """Questions with deterministic answers do not spend an AI request."""
-        for intent in ("ADDRESS", "PRICE", "SCHEDULE", "ACTIVITY_STATUS", "ADVERTISEMENT"):
+    def _fact_intents(self, message: str, history: list[dict], ai_intent: str) -> list[str]:
+        intents: list[str] = []
+        for intent in ("ADDRESS", "PRICE", "SCHEDULE", "ACTIVITY_STATUS", "ABOUT", "AVAILABILITY"):
             if _contains(message, intent):
-                return intent
+                intents.append(intent)
         lowered = message.lower()
         if "занят" in lowered and "месяц" in lowered:
-            return "MONTHLY_FREQUENCY"
-        if "месяц" in lowered and any("Стоимость одного занятия" in item["content"] for item in history if item["role"] == "assistant"):
-            return "PRICE"
-        return None
+            intents.append("MONTHLY_FREQUENCY")
+        if "месяц" in lowered and "PRICE" not in intents and any(
+            any(marker in item["content"] for marker in ("Стоимость одного занятия", "Одно занятие стоит"))
+            for item in history if item["role"] == "assistant"
+        ):
+            intents.append("PRICE")
+        if not intents and ai_intent in STANDARD_FACT_INTENTS:
+            intents.append(ai_intent)
+        return list(dict.fromkeys(intents))
 
-    def _address_reply(self) -> Reply:
-        address = str(self.business.get("address", "")).strip()
-        return Reply(f"Мы находимся по адресу: {address}" if address else "У меня пока нет точного адреса. Могу предложить уточнить его у руководителя.")
-
-    def _price_reply(self, message: str) -> Reply:
+    def _standard_fact_reply(self, intents: list[str], message: str) -> Reply:
+        """Render only verified facts, while keeping the wording conversational."""
+        parts: list[str] = []
+        monthly_question = any(word in message.lower() for word in ("месяц", "месяч", "тогда", "итого"))
         price = str(self.business.get("lesson_price", "")).strip()
         lessons = str(self.business.get("lessons_per_month", "")).strip()
-        if not price:
-            return Reply("У меня пока нет точной информации о стоимости. Могу предложить уточнить её у руководителя.")
-        reply = f"Стоимость одного занятия: {price}."
-        numeric = re.search(r"\d+[\d\s]*", price.replace("\u00a0", " "))
-        if numeric and any(word in message.lower() for word in ("месяц", "месяч", "тогда")):
-            amount = int(re.sub(r"\D", "", numeric.group(0)))
-            reply += f" При {lessons or 'обычном количестве'} занятиях это ориентировочно {amount * 8:,}–{amount * 10:,} ₽ в месяц.".replace(",", " ")
-        elif lessons:
-            reply += f" Обычно проводится примерно {lessons} занятий в месяц."
-        return Reply(reply)
 
-    def _schedule_reply(self) -> Reply:
-        hours = str(self.business.get("working_hours", "")).strip()
-        return Reply(f"График занятий: {hours}." if hours else "У меня пока нет точного расписания. Его лучше уточнить у руководителя.")
+        for intent in STANDARD_FACT_INTENTS:
+            if intent not in intents:
+                continue
+            if intent == "ADDRESS":
+                address = str(self.business.get("address", "")).strip()
+                parts.append(f"Занятия проходят по адресу: {address}." if address else "Точный адрес пока не указан.")
+            elif intent == "PRICE":
+                parts.append(f"Одно занятие стоит {price}." if price else "Точная стоимость пока не указана.")
+                if price and monthly_question:
+                    monthly_total = self._monthly_total(price, lessons)
+                    if monthly_total:
+                        parts.append(f"При {lessons} занятиях это ориентировочно {monthly_total} ₽ в месяц.")
+            elif intent == "SCHEDULE":
+                schedule = str(self.business.get("working_hours", "")).strip()
+                parts.append(f"Занятия проходят в таком режиме: {schedule}." if schedule else "Точное расписание пока не указано.")
+            elif intent == "ACTIVITY_STATUS":
+                status = str(self.business.get("activity_status", "")).strip()
+                natural_status = re.sub(r"\bгруппа\s+функционирует\b", "группа работает", status, flags=re.IGNORECASE)
+                parts.append(natural_status or "Да, группа работает: занимаемся и с маленькими детьми, и с подростками.")
+            elif intent == "MONTHLY_FREQUENCY":
+                parts.append(f"Обычно получается {lessons} занятий в месяц." if lessons else "Точное количество занятий в месяц пока не указано.")
+            elif intent == "ABOUT":
+                lowered = message.lower()
+                if any(word in lowered for word in ("педагог", "преподавател", "учител")):
+                    parts.append("Подробная информация о педагоге пока не добавлена.")
+                elif any(word in lowered for word in ("метод", "подход", "программ")):
+                    parts.append("Подробное описание программы и методики пока не добавлено.")
+                else:
+                    audience = "для маленьких детей и подростков"
+                    parts.append(f"«Златоуст» — клуб разговорного английского {audience}.")
+                    schedule = str(self.business.get("working_hours", "")).strip()
+                    if schedule:
+                        parts.append(f"Занятия проходят в таком режиме: {schedule}.")
+            elif intent == "AVAILABILITY":
+                availability = str(self.business.get("enrollment_status", "")).strip()
+                parts.append(availability or "Актуальная информация о свободных местах пока не указана.")
 
-    def _activity_reply(self) -> Reply:
-        status = str(self.business.get("activity_status", "")).strip()
-        return Reply(status or "Да, группа работает. Мы занимаемся как с маленькими детьми, так и с подростками.")
+        return Reply(" ".join(parts) or "Проверенной информации по этому вопросу пока нет.")
 
-    def _lead_or_general(self, user_id: str, message: str, result: AIResult, lead: dict | None, first: bool, intent: str) -> Reply:
+    @staticmethod
+    def _monthly_total(price: str, lessons: str) -> str:
+        price_match = re.search(r"\d[\d\s]*", price.replace("\u00a0", " "))
+        lesson_counts = [int(value) for value in re.findall(r"\d+", lessons)]
+        if not price_match or not lesson_counts:
+            return ""
+        amount = int(re.sub(r"\D", "", price_match.group(0)))
+        low, high = min(lesson_counts), max(lesson_counts)
+        low_total = f"{amount * low:,}".replace(",", " ")
+        high_total = f"{amount * high:,}".replace(",", " ")
+        return low_total if low == high else f"{low_total}–{high_total}"
+
+    def _lead_or_general(
+        self,
+        user_id: str,
+        message: str,
+        result: AIResult,
+        lead: dict | None,
+        intent: str,
+        has_local_lead_data: bool,
+    ) -> Reply:
         if intent == "ADVERTISEMENT":
             return Reply("Спасибо за предложение! Сейчас рекламные услуги нам не интересны. Желаем вам успехов!")
+
+        if intent == "CONTACT_MANAGER" and not self._callback_request(message):
+            if self.manager_vk_url:
+                return Reply(f"Конечно. Руководителю можно написать напрямую: {self.manager_vk_url}")
+            return Reply("Контакт руководителя пока не указан.")
+
         completed_lead = bool(lead) and bool(lead.get("contact_consent"))
         active_lead = bool(lead) and not completed_lead and lead.get("status") in {"NEW", "COLLECTING_CONTACTS", "READY_FOR_CONTACT"}
-        is_lead = active_lead or (not completed_lead and (intent == "ENROLLMENT" or self._explicit_contact_request(message)))
+        supplied_fields = self._validated_fields(result.extracted_data or {})
+        continues_lead = active_lead and (
+            has_local_lead_data
+            or intent in {"ENROLLMENT", "CONSENT_TO_CONTACT", "CONTACT_MANAGER"}
+            or self._is_explicit_consent(message)
+        )
+        is_lead = not completed_lead and (intent == "ENROLLMENT" or self._callback_request(message) or continues_lead)
         if is_lead:
             current = self.repository.ensure_lead(user_id)
-            fields = self._validated_fields(result.extracted_data or {})
-            current = self.repository.update_lead(user_id, fields, status="COLLECTING_CONTACTS" if current["status"] != "READY_FOR_CONTACT" else None)
+            current = self.repository.update_lead(user_id, supplied_fields, status="COLLECTING_CONTACTS" if current["status"] != "READY_FOR_CONTACT" else None)
             missing = [field for field in LEAD_FIELDS if not current.get(field)]
             # Consent only has meaning after the bot has explicitly reached the ready state.
-            explicit_yes = self._is_explicit_consent(message) or result.contact_consent
+            explicit_yes = self._is_explicit_consent(message)
             if not missing and current["status"] == "READY_FOR_CONTACT" and explicit_yes:
                 current = self.repository.update_lead(user_id, {}, consent=True)
                 return Reply(self._handoff_reply(), notify_manager=bool(self.manager_vk_id), lead=current)
@@ -218,7 +262,7 @@ class ConversationService:
         if intent == "GREETING":
             greeting = result.reply.strip()
             return Reply(greeting or "Здравствуйте! Я личный ассистент педагога. Рада помочь — чем могу быть полезна?")
-        text = result.reply.strip()
+        text = self._without_unsolicited_contact_offer(result.reply.strip())
         if text:
             return Reply(text)
         return Reply(self._friendly_unknown_reply(message))
@@ -228,7 +272,7 @@ class ConversationService:
         if "погод" in lowered:
             return "Я не вижу, какая сейчас погода за окном, поэтому не буду угадывать 🙂 Пусть день будет хорошим!"
         if any(phrase in lowered for phrase in ("как дела", "как ты", "как ваши дела")):
-            return "Спасибо, всё хорошо! Я на связи и готова помочь с вопросами о занятиях."
+            return "Спасибо, всё хорошо! Я на связи — можем просто поговорить или вместе разобрать ваш вопрос."
         if any(word in lowered for word in ("устал", "устала", "тяжело", "грустно", "плохо", "тревожно")):
             return "Понимаю. Иногда правда нужно немного выдохнуть и не требовать от себя слишком многого. Если хотите, расскажите, что особенно вымотало — я побуду рядом в разговоре."
         return "Я на связи и могу спокойно поговорить с вами. Расскажите чуть подробнее, что сейчас занимает мысли?"
@@ -241,8 +285,8 @@ class ConversationService:
              if all(OPENING_PHRASES[(start + offset) % len(OPENING_PHRASES)] not in content for content in recent)),
             OPENING_PHRASES[start],
         )
-        remainder = re.sub(r"^\s*здравствуйте[!,.\s]*", "", text, flags=re.IGNORECASE).strip()
-        return f"Здравствуйте! {phrase}" + (f" {remainder}" if remainder else "")
+        remainder = _without_salutation(text).strip()
+        return f"Здравствуйте! {phrase}" + (f"\n\n{remainder}" if remainder else "")
 
     @staticmethod
     def _explicit_contact_request(message: str) -> bool:
@@ -251,6 +295,14 @@ class ConversationService:
             "связаться с руководителем", "связаться с педагогом", "позвоните мне",
             "пусть позвонит", "передайте руководителю", "передайте педагогу",
             "хочу оставить контакты", "оставлю номер", "оставить номер",
+        ))
+
+    @staticmethod
+    def _callback_request(message: str) -> bool:
+        lowered = message.lower()
+        return any(phrase in lowered for phrase in (
+            "позвоните мне", "пусть позвонит", "перезвоните мне", "хочу оставить контакты",
+            "оставлю номер", "оставить номер", "передайте мой номер",
         ))
 
     @staticmethod
@@ -312,8 +364,26 @@ class ConversationService:
 
     @staticmethod
     def _is_explicit_consent(message: str) -> bool:
-        normalized = re.sub(r"[^а-яa-z ]", " ", message.lower())
-        return bool(re.search(r"\b(да|хорошо|передайте|можете передать|пусть позвонит|согласна|согласен)\b", normalized))
+        normalized = re.sub(r"\s+", " ", re.sub(r"[^а-яa-z ]", " ", message.lower())).strip()
+        if any(phrase in normalized for phrase in ("передайте", "можете передать", "пусть позвонит", "согласна", "согласен")):
+            return True
+        return normalized in {"да", "да пожалуйста", "хорошо", "можно", "конечно"}
+
+    @staticmethod
+    def _without_unsolicited_contact_offer(text: str) -> str:
+        if not text:
+            return ""
+        blocked = (
+            r"обратит(?:есь|ься)\s+к\s+руководител",
+            r"свяжит(?:есь|ься)\s+с\s+руководител",
+            r"напишит(?:е|ь)\s+руководител",
+            r"остав(?:ьте|ить)\s+(?:свои\s+)?(?:контакты|номер)",
+            r"передам\s+(?:ваши\s+)?контакты",
+            r"https?://vk\.(?:com|ru)/",
+        )
+        sentences = re.split(r"(?<=[.!?])\s+|\n+", text)
+        kept = [sentence.strip() for sentence in sentences if sentence.strip() and not any(re.search(pattern, sentence, re.IGNORECASE) for pattern in blocked)]
+        return " ".join(kept)
 
     def _save(self, user_id: str, message: str, reply: str) -> None:
         self.repository.save_message(user_id, "user", message)
