@@ -66,10 +66,7 @@ class Reply:
 def _contains(message: str, intent: str) -> bool:
     lowered = message.lower()
     if intent == "ACTIVITY_STATUS":
-        normalized = _without_salutation(lowered)
-        normalized = re.sub(r"[^а-яa-z ]", " ", normalized)
-        normalized = " ".join(normalized.split())
-        return normalized in {"вы работаете", "работаете ли вы", "группа работает", "вы вообще работаете"}
+        return bool(re.search(r"(?:^|[.!?)]\s*)(?:вы\s+работаете|работаете\s+ли\s+вы|группа\s+работает|вы\s+вообще\s+работаете)\s*[?!.]*\s*$", lowered))
     return any(keyword in lowered for keyword in FACT_KEYWORDS[intent])
 
 
