@@ -66,7 +66,7 @@ class Reply:
 def _contains(message: str, intent: str) -> bool:
     lowered = message.lower()
     if intent == "ACTIVITY_STATUS":
-        return bool(re.search(r"(?:^|[.!?)]\s*)(?:вы\s+работаете|работаете\s+ли\s+вы|группа\s+работает|вы\s+вообще\s+работаете)\s*[?!.]*\s*$", lowered))
+        return bool(re.search(r"(?:^|[.!?,)]\s*)(?:вы\s+работаете|работаете\s+ли\s+вы|группа\s+работает|вы\s+вообще\s+работаете)\s*[?!.]*\s*$", lowered))
     return any(keyword in lowered for keyword in FACT_KEYWORDS[intent])
 
 
@@ -113,7 +113,7 @@ class ConversationService:
                 result = self.ai.analyze(cleaned, history, self.business, self.knowledge, lead)
                 logger.info("ai_request_success", extra={"vk_user_id": user_id})
             except Exception as exc:
-                logger.warning("ai_request_failed: %s", type(exc).__name__, extra={"vk_user_id": user_id})
+                logger.warning("ai_request_failed: %s", exc, extra={"vk_user_id": user_id})
                 result = _fallback(cleaned)
 
         extracted = dict(result.extracted_data or {})

@@ -72,5 +72,9 @@ class GeminiProvider(AIProvider):
                 body = json.loads(response.read().decode())
             text = body["candidates"][0]["content"]["parts"][0]["text"]
             return AIResult.from_dict(json.loads(text))
-        except (urllib.error.URLError, urllib.error.HTTPError, KeyError, IndexError, ValueError, TypeError) as exc:
-            raise AIProviderError("Gemini response is unavailable or invalid") from exc
+        except urllib.error.HTTPError as exc:
+            raise AIProviderError(f"Gemini HTTP {exc.code}") from exc
+        except urllib.error.URLError as exc:
+            raise AIProviderError(f"Gemini network error: {type(exc.reason).__name__}") from exc
+        except (KeyError, IndexError, ValueError, TypeError) as exc:
+            raise AIProviderError("Gemini returned an invalid response") from exc
