@@ -22,7 +22,7 @@ python3 -m src.main
 | --- | --- |
 | `AI_PROVIDER` | Сейчас поддерживается `gemini`. |
 | `GEMINI_API_KEY` | API-ключ Gemini. Создайте его в [Google AI Studio](https://aistudio.google.com/app/apikey). |
-| `GEMINI_MODEL` | Модель Gemini, например `gemini-3.5-flash-lite`. |
+| `GEMINI_MODEL` | Модель Gemini, например `gemini-3.5-flash`. |
 | `VK_GROUP_TOKEN`, `VK_GROUP_ID` | Токен и ID сообщества VK. |
 | `DATABASE_PATH` | Путь к SQLite; на хостинге укажите постоянный каталог. |
 | `MANAGER_VK_ID`, `MANAGER_VK_URL` | Получатель уведомлений и/или прямая ссылка на руководителя. |

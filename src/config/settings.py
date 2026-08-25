@@ -55,7 +55,7 @@ class Settings:
         return cls(
             ai_provider=os.getenv("AI_PROVIDER", "gemini").lower(),
             gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
-            gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+            gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash"),
             vk_group_token=os.getenv("VK_GROUP_TOKEN", ""),
             vk_group_id=os.getenv("VK_GROUP_ID", ""),
             database_path=Path(os.getenv("DATABASE_PATH", str(root / "data" / "vkhelper.sqlite3"))),
