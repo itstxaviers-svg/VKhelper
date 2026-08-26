@@ -21,8 +21,8 @@ def load_dotenv(path: Path) -> None:
 @dataclass(frozen=True)
 class Settings:
     ai_provider: str
-    gemini_api_key: str
-    gemini_model: str
+    kie_api_key: str
+    kie_model: str
     vk_group_token: str
     vk_group_id: str
     database_path: Path
@@ -53,9 +53,9 @@ class Settings:
         if business is None:
             raise RuntimeError("business.json is unavailable")
         return cls(
-            ai_provider=os.getenv("AI_PROVIDER", "gemini").lower(),
-            gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
-            gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash"),
+            ai_provider=os.getenv("AI_PROVIDER", "kie").lower(),
+            kie_api_key=os.getenv("KIE_API_KEY", ""),
+            kie_model=os.getenv("KIE_MODEL", "gpt-5-2"),
             vk_group_token=os.getenv("VK_GROUP_TOKEN", ""),
             vk_group_id=os.getenv("VK_GROUP_ID", ""),
             database_path=Path(os.getenv("DATABASE_PATH", str(root / "data" / "vkhelper.sqlite3"))),

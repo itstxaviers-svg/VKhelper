@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from src.ai.gemini import GeminiProvider
+from src.ai.kie import KieProvider
 from src.config.settings import Settings
 from src.database.repository import Repository
 from src.services.conversation import ConversationService
@@ -15,10 +15,10 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     root = Path(__file__).resolve().parents[1]
     settings = Settings.from_project_root(root)
-    if settings.ai_provider != "gemini":
+    if settings.ai_provider != "kie":
         raise RuntimeError(f"Unsupported AI_PROVIDER: {settings.ai_provider}")
     repository = Repository(settings.database_path)
-    service = ConversationService(repository, GeminiProvider(settings.gemini_api_key, settings.gemini_model), settings.business, settings.knowledge, settings.manager_vk_id, settings.manager_vk_url)
+    service = ConversationService(repository, KieProvider(settings.kie_api_key, settings.kie_model), settings.business, settings.knowledge, settings.manager_vk_id, settings.manager_vk_url)
     vk = VKClient(settings.vk_group_token, settings.vk_group_id)
     summaries = DailySummaryService(repository, settings.manager_vk_id, settings.timezone, settings.daily_summary_hour)
 
