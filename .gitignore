@@ -1,4 +1,5 @@
 .env
+bothost*.env
 bothost.env
 *.db
 *.sqlite
